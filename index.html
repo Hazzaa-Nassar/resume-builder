@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CV Maker</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>CV Maker</h1>
+    <p class="tagline">Edit on the left — preview updates instantly on the right.</p>
+  </header>
+
+  <main class="workspace">
+    <section class="panel panel-form" aria-label="Resume details">
+      <h2>Your details</h2>
+      <form id="cv-form" class="cv-form" autocomplete="off">
+        <div class="field">
+          <label for="name">Full name</label>
+          <input type="text" id="name" name="name" placeholder="Jane Doe" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="title">Professional title</label>
+          <input type="text" id="title" name="title" placeholder="Senior Product Designer" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="contact">Email / contact</label>
+          <input type="text" id="contact" name="contact" placeholder="jane@email.com · +1 555 0100" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="experience">Work experience</label>
+          <textarea id="experience" name="experience" rows="10" placeholder="Company — Role (2020–Present)&#10;• Key achievement or responsibility&#10;&#10;Previous Company — Role (2016–2020)&#10;• Another highlight"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" id="download-pdf" class="btn btn-primary">
+            Download PDF
+          </button>
+          <button type="button" id="clear-form" class="btn btn-secondary">
+            Clear Form
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel panel-preview" aria-label="Resume preview">
+      <h2 class="preview-label">Preview</h2>
+      <article id="resume-preview" class="resume-preview" aria-live="polite">
+        <header class="resume-header">
+          <h3 id="preview-name" class="resume-name">Your Name</h3>
+          <p id="preview-title" class="resume-title">Professional Title</p>
+          <p id="preview-contact" class="resume-contact">email@example.com</p>
+        </header>
+        <section class="resume-section">
+          <h4>Experience</h4>
+          <div id="preview-experience" class="resume-body">Your work experience will appear here.</div>
+        </section>
+      </article>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="app.js"></script>
+</body>
+</html>
