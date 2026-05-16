@@ -16,6 +16,9 @@
   --radius: 10px;
   --font: "Segoe UI", system-ui, -apple-system, sans-serif;
   --a4-ratio: 210 / 297;
+  --a4-ref-width: 420px;
+  --a4-ref-height: calc(var(--a4-ref-width) * 297 / 210);
+  --preview-scale: 1;
   --overflow-danger: #dc2626;
   --overflow-danger-bg: rgba(220, 38, 38, 0.06);
   --cutoff-line: rgba(37, 99, 235, 0.35);
@@ -82,6 +85,10 @@ body {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.panel.panel-preview {
+  overflow: hidden;
 }
 
 .panel h2,
@@ -222,6 +229,11 @@ body {
   margin-bottom: 0.65rem;
 }
 
+.repeatable-card textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
 .btn-sm {
   padding: 0.4rem 0.75rem;
   font-size: 0.8rem;
@@ -284,13 +296,48 @@ body {
   border-color: #c5cad3;
 }
 
+/* Preview column: toolbar fixed; stage scrolls only when scaled page is tall. */
 .panel-preview {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  min-height: 0;
+}
+
+.preview-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.preview-stage > .page-overflow-warning {
+  flex-shrink: 0;
+}
+
+.a4-scale-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 0.15rem 0 0.5rem;
+}
+
+.a4-scale-sizer {
+  position: relative;
+  width: calc(var(--a4-ref-width) * var(--preview-scale));
+  height: calc(var(--a4-ref-height) * var(--preview-scale));
+  flex-shrink: 0;
 }
 
 .page-overflow-warning {
+  flex-shrink: 0;
   width: 100%;
   margin: 0 0 0.75rem;
   padding: 0.5rem 0.75rem;
@@ -308,6 +355,8 @@ body {
 }
 
 .preview-toolbar {
+  flex-shrink: 0;
+  width: 100%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -360,24 +409,30 @@ body {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
+/* Fixed reference page; transform scale fits column (set in app.js). */
 .resume-preview.a4-page {
   --resume-font: Helvetica, Arial, sans-serif;
-  position: relative;
-  width: 100%;
-  max-width: min(100%, 420px);
-  margin: 0 auto;
-  flex: 0 0 auto;
-  aspect-ratio: var(--a4-ratio);
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: var(--a4-ref-width);
+  height: var(--a4-ref-height);
   padding: 0;
   font-family: var(--resume-font);
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: visible;
+  transform: scale(var(--preview-scale));
+  transform-origin: top left;
   transition: font-family 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .resume-preview__content {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
   padding: 2rem 2.25rem;
   min-height: 100%;
 }
@@ -422,6 +477,7 @@ body {
 .resume-preview .resume-summary.is-overflowing:not(.is-placeholder),
 .resume-preview .resume-body.is-overflowing:not(.is-placeholder),
 .resume-preview .education-entry.is-overflowing,
+.resume-preview .experience-entry.is-overflowing,
 .resume-preview .skill-badge.is-overflowing,
 .resume-preview .language-item.is-overflowing {
   color: var(--overflow-danger);
@@ -500,10 +556,40 @@ body {
   font-style: italic;
 }
 
+.resume-experience-list,
 .resume-education-list {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+}
+
+.experience-entry__role {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.experience-entry__company {
+  margin: 0.2rem 0 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.experience-entry__dates {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.experience-entry__description {
+  margin: 0.45rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .education-entry__school {
@@ -623,8 +709,19 @@ body {
     padding: 1rem 1rem 0.25rem;
   }
 
-  .resume-preview.a4-page {
-    max-width: 100%;
+  .panel.panel-preview {
+    overflow: visible;
+  }
+
+  .preview-stage {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .a4-scale-viewport {
+    overflow: visible;
+    min-height: auto;
   }
 
   .repeatable-card__row {

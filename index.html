@@ -32,9 +32,12 @@
           <label for="summary">Professional summary</label>
           <textarea id="summary" name="summary" class="textarea-summary" rows="4" placeholder="Write 3–4 sentences that capture your strongest achievements, expertise, and career direction. Keep it concise, confident, and tailored to the role you want."></textarea>
         </div>
-        <div class="field">
-          <label for="experience">Work experience</label>
-          <textarea id="experience" name="experience" rows="8" placeholder="Company — Role (2020–Present)&#10;• Key achievement or responsibility&#10;&#10;Previous Company — Role (2016–2020)&#10;• Another highlight"></textarea>
+        <div class="field-group" id="experience-group">
+          <div class="field-group__header">
+            <h3 class="field-group__title">Work experience</h3>
+            <button type="button" id="add-experience-btn" class="btn btn-secondary btn-sm">+ Add Experience</button>
+          </div>
+          <div id="experience-list" class="repeatable-list" aria-live="polite"></div>
         </div>
 
         <div class="field-group" id="education-group">
@@ -82,20 +85,25 @@
           </select>
         </div>
       </div>
-      <p id="page-overflow-warning" class="page-overflow-warning" role="status" hidden>
-        Content exceeds one A4 page — trim text before exporting.
-      </p>
-      <article id="resume-preview" class="resume-preview a4-page" aria-live="polite">
-        <div id="resume-preview-content" class="resume-preview__content">
-          <header class="resume-header">
-            <h3 id="preview-name" class="resume-name">Your Name</h3>
-            <p id="preview-title" class="resume-title">Professional Title</p>
-            <p id="preview-contact" class="resume-contact">email@example.com</p>
-          </header>
+      <div class="preview-stage">
+        <p id="page-overflow-warning" class="page-overflow-warning" role="status" hidden>
+          Content exceeds one A4 page — trim text before exporting.
+        </p>
+        <div class="a4-scale-viewport" id="a4-scale-viewport">
+          <div class="a4-scale-sizer" id="a4-scale-sizer">
+            <article id="resume-preview" class="resume-preview a4-page" aria-live="polite">
+              <div id="resume-preview-content" class="resume-preview__content">
+            <header class="resume-header">
+              <h3 id="preview-name" class="resume-name">Your Name</h3>
+              <p id="preview-title" class="resume-title">Professional Title</p>
+              <p id="preview-contact" class="resume-contact">email@example.com</p>
+            </header>
           <p id="preview-summary" class="resume-summary resume-body is-placeholder">Your professional summary will appear here.</p>
           <section class="resume-section" data-section="experience">
             <h4>Experience</h4>
-            <div id="preview-experience" class="resume-body">Your work experience will appear here.</div>
+            <div id="preview-experience" class="resume-experience-list">
+              <p class="resume-body is-placeholder">Your work experience will appear here.</p>
+            </div>
           </section>
           <section class="resume-section" data-section="education" id="preview-education-section">
             <h4>Education</h4>
@@ -117,9 +125,12 @@
               </ul>
             </section>
           </div>
+              </div>
+              <div class="a4-cutoff-line" aria-hidden="true"></div>
+            </article>
+          </div>
         </div>
-        <div class="a4-cutoff-line" aria-hidden="true"></div>
-      </article>
+      </div>
     </section>
   </main>
 

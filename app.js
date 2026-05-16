@@ -1,3 +1,15 @@
+/**
+ * CV Maker — single-page resume editor.
+ *
+ * State sync pipeline (form → preview → localStorage):
+ *   1. User edits #cv-form (static fields + repeatable cards in *-list containers).
+ *   2. `handleInput` saves via `getRawValues()` and refreshes via `getValues()` + `updateResume()`.
+ *   3. Repeatable sections use `collect*FromDOM()` → normalize → render preview / PDF.
+ *
+ * Draft shape (localStorage key: cv-maker-draft):
+ *   name, title, contact, summary, skills (string), fontFamily,
+ *   experience[] | education[] | languages[] (objects with data-field keys in HTML).
+ */
 (function () {
   "use strict";
 
@@ -43,13 +55,20 @@
     proficiency: "",
   };
 
+  const EMPTY_EXPERIENCE = {
+    company: "",
+    role: "",
+    startDate: "",
+    endDate: "",
+    description: "",
+  };
+
   const form = document.getElementById("cv-form");
   const fields = {
     name: document.getElementById("name"),
     title: document.getElementById("title"),
     contact: document.getElementById("contact"),
     summary: document.getElementById("summary"),
-    experience: document.getElementById("experience"),
     skills: document.getElementById("skills"),
   };
 
@@ -64,8 +83,10 @@
     languages: document.getElementById("preview-languages"),
   };
 
+  const experienceListEl = document.getElementById("experience-list");
   const educationListEl = document.getElementById("education-list");
   const languagesListEl = document.getElementById("languages-list");
+  const addExperienceBtn = document.getElementById("add-experience-btn");
   const addEducationBtn = document.getElementById("add-education");
   const addLanguageBtn = document.getElementById("add-language");
   const downloadBtn = document.getElementById("download-pdf");
@@ -73,10 +94,34 @@
   const fontSelect = document.getElementById("resume-font");
   const resumePreview = document.getElementById("resume-preview");
   const resumePreviewContent = document.getElementById("resume-preview-content");
+  const previewStage = document.querySelector(".preview-stage");
+  const a4ScaleViewport = document.getElementById("a4-scale-viewport");
+  const a4ScaleSizer = document.getElementById("a4-scale-sizer");
   const overflowWarning = document.getElementById("page-overflow-warning");
-  const resumeHeader = resumePreviewContent.querySelector(".resume-header");
+
+  const A4_REF_WIDTH = 420;
+  const A4_REF_HEIGHT = A4_REF_WIDTH * (297 / 210);
 
   let overflowRaf = 0;
+
+  /** Startup check: logs missing nodes; does not throw (graceful degradation). */
+  function assertDom() {
+    const required = {
+      form,
+      experienceListEl,
+      educationListEl,
+      languagesListEl,
+      addExperienceBtn,
+      resumePreview,
+      resumePreviewContent,
+      "preview.experience": preview.experience,
+    };
+    Object.keys(required).forEach(function (key) {
+      if (!required[key]) {
+        console.error("CV Maker: missing required element —", key);
+      }
+    });
+  }
 
   function getFontKey() {
     const key = fontSelect.value;
@@ -86,9 +131,37 @@
   function applyFont(fontKey) {
     const resolved = FONT_OPTIONS[fontKey] ? fontKey : DEFAULT_FONT;
     const { stack } = FONT_OPTIONS[resolved];
-    fontSelect.value = resolved;
-    resumePreview.style.setProperty("--resume-font", stack);
+    if (fontSelect) {
+      fontSelect.value = resolved;
+    }
+    if (resumePreview) {
+      resumePreview.style.setProperty("--resume-font", stack);
+    }
     scheduleOverflowCheck();
+  }
+
+  /** Fit reference A4 page to preview column via transform (layout size stays fixed for overflow math). */
+  function updatePreviewScale() {
+    if (!a4ScaleViewport || !resumePreview) {
+      return;
+    }
+
+    const availW = a4ScaleViewport.clientWidth;
+    const availH = a4ScaleViewport.clientHeight;
+    if (availW <= 0) {
+      return;
+    }
+
+    const scaleW = availW / A4_REF_WIDTH;
+    const scaleH = availH > 0 ? availH / A4_REF_HEIGHT : scaleW;
+    const scale = Math.min(scaleW, scaleH);
+    const scaleValue = String(scale);
+
+    document.documentElement.style.setProperty("--preview-scale", scaleValue);
+    if (a4ScaleSizer) {
+      a4ScaleSizer.style.setProperty("--preview-scale", scaleValue);
+    }
+    resumePreview.style.setProperty("--preview-scale", scaleValue);
   }
 
   function scheduleOverflowCheck() {
@@ -97,11 +170,16 @@
     }
     overflowRaf = requestAnimationFrame(function () {
       overflowRaf = 0;
+      updatePreviewScale();
       checkPageOverflow();
     });
   }
 
   function checkPageOverflow() {
+    if (!resumePreview || !resumePreviewContent) {
+      return;
+    }
+
     const pageHeight = resumePreview.clientHeight;
     const contentHeight = resumePreviewContent.scrollHeight;
     const pageOverflows = contentHeight > pageHeight + 1;
@@ -113,7 +191,7 @@
     }
 
     const overflowTargets = resumePreviewContent.querySelectorAll(
-      ".resume-header, .resume-summary, .resume-section, .resume-meta-row"
+      ".resume-header, .resume-summary, .resume-section, .resume-meta-row, .experience-entry, .education-entry"
     );
     overflowTargets.forEach(function (el) {
       const crossesCutoff = el.getBoundingClientRect().bottom > cutoffY - 1;
@@ -159,6 +237,49 @@
     };
   }
 
+  function normalizeExperience(entry) {
+    return {
+      company: (entry && entry.company) || "",
+      role: (entry && entry.role) || "",
+      startDate: (entry && entry.startDate) || "",
+      endDate: (entry && entry.endDate) || "",
+      description: (entry && entry.description) || "",
+    };
+  }
+
+  /**
+   * Load experience from draft. Supports current array format and legacy single-textarea
+   * drafts (plain string → one job entry with description only).
+   */
+  function parseStoredExperience(value) {
+    if (Array.isArray(value)) {
+      return value.map(normalizeExperience);
+    }
+    if (typeof value === "string" && value.trim()) {
+      return [normalizeExperience({ description: value.trim() })];
+    }
+    return [];
+  }
+
+  function formatExperienceDates(entry) {
+    const job = normalizeExperience(entry);
+    if (job.startDate && job.endDate) {
+      return job.startDate + " – " + job.endDate;
+    }
+    return job.startDate || job.endDate || "";
+  }
+
+  function experienceHasContent(entry) {
+    const job = normalizeExperience(entry);
+    return Boolean(
+      job.company ||
+        job.role ||
+        job.startDate ||
+        job.endDate ||
+        job.description
+    );
+  }
+
   function educationHasContent(entry) {
     const e = normalizeEducation(entry);
     return Boolean(
@@ -171,7 +292,28 @@
     return Boolean(l.language || l.proficiency);
   }
 
+  function collectExperienceFromDOM() {
+    if (!experienceListEl) {
+      return [];
+    }
+    return Array.from(experienceListEl.querySelectorAll(".repeatable-card")).map(
+      function (card) {
+        return normalizeExperience({
+          company: card.querySelector('[data-field="company"]')?.value ?? "",
+          role: card.querySelector('[data-field="role"]')?.value ?? "",
+          startDate: card.querySelector('[data-field="startDate"]')?.value ?? "",
+          endDate: card.querySelector('[data-field="endDate"]')?.value ?? "",
+          description:
+            card.querySelector('[data-field="description"]')?.value ?? "",
+        });
+      }
+    );
+  }
+
   function collectEducationFromDOM() {
+    if (!educationListEl) {
+      return [];
+    }
     return Array.from(educationListEl.querySelectorAll(".repeatable-card")).map(
       function (card) {
         return normalizeEducation({
@@ -188,6 +330,9 @@
   }
 
   function collectLanguagesFromDOM() {
+    if (!languagesListEl) {
+      return [];
+    }
     return Array.from(languagesListEl.querySelectorAll(".repeatable-card")).map(
       function (card) {
         return normalizeLanguage({
@@ -197,6 +342,42 @@
         });
       }
     );
+  }
+
+  function buildExperienceCard(entry, index) {
+    const card = document.createElement("fieldset");
+    card.className = "repeatable-card";
+    card.dataset.index = String(index);
+    card.innerHTML =
+      '<legend class="repeatable-card__legend">Role ' +
+      (index + 1) +
+      '</legend>' +
+      '<button type="button" class="repeatable-card__remove" data-action="remove-experience" aria-label="Remove this role">Remove</button>' +
+      '<div class="repeatable-card__row">' +
+      '<div class="field"><label>Company</label>' +
+      '<input type="text" data-field="company" placeholder="Acme Corp" spellcheck="false" value="' +
+      escapeHtml(entry.company) +
+      '"></div>' +
+      '<div class="field"><label>Role</label>' +
+      '<input type="text" data-field="role" placeholder="Senior Designer" spellcheck="false" value="' +
+      escapeHtml(entry.role) +
+      '"></div>' +
+      "</div>" +
+      '<div class="repeatable-card__row">' +
+      '<div class="field"><label>Start date</label>' +
+      '<input type="text" data-field="startDate" placeholder="Jan 2020" spellcheck="false" value="' +
+      escapeHtml(entry.startDate) +
+      '"></div>' +
+      '<div class="field"><label>End date</label>' +
+      '<input type="text" data-field="endDate" placeholder="Present" spellcheck="false" value="' +
+      escapeHtml(entry.endDate) +
+      '"></div>' +
+      "</div>" +
+      '<div class="field"><label>Description</label>' +
+      '<textarea data-field="description" rows="4" placeholder="• Led cross-functional teams&#10;• Delivered measurable outcomes">' +
+      escapeHtml(entry.description) +
+      "</textarea></div>";
+    return card;
   }
 
   function buildEducationCard(entry, index) {
@@ -255,7 +436,22 @@
     return card;
   }
 
+  function renderExperienceList(entries) {
+    if (!experienceListEl) {
+      return;
+    }
+    const list =
+      entries && entries.length ? entries.map(normalizeExperience) : [EMPTY_EXPERIENCE];
+    experienceListEl.replaceChildren();
+    list.forEach(function (entry, index) {
+      experienceListEl.appendChild(buildExperienceCard(entry, index));
+    });
+  }
+
   function renderEducationList(entries) {
+    if (!educationListEl) {
+      return;
+    }
     const list =
       entries && entries.length ? entries.map(normalizeEducation) : [EMPTY_EDUCATION];
     educationListEl.replaceChildren();
@@ -265,12 +461,41 @@
   }
 
   function renderLanguagesList(entries) {
+    if (!languagesListEl) {
+      return;
+    }
     const list =
       entries && entries.length ? entries.map(normalizeLanguage) : [EMPTY_LANGUAGE];
     languagesListEl.replaceChildren();
     list.forEach(function (entry, index) {
       languagesListEl.appendChild(buildLanguageCard(entry, index));
     });
+  }
+
+  function formatExperienceEntry(entry) {
+    const job = normalizeExperience(entry);
+    const parts = [];
+
+    if (job.role) {
+      parts.push('<p class="experience-entry__role">' + escapeHtml(job.role) + "</p>");
+    }
+    if (job.company) {
+      parts.push(
+        '<p class="experience-entry__company">' + escapeHtml(job.company) + "</p>"
+      );
+    }
+    const dates = formatExperienceDates(job);
+    if (dates) {
+      parts.push('<p class="experience-entry__dates">' + escapeHtml(dates) + "</p>");
+    }
+    if (job.description) {
+      parts.push(
+        '<p class="experience-entry__description">' +
+          escapeHtml(job.description) +
+          "</p>"
+      );
+    }
+    return parts.length ? '<div class="experience-entry">' + parts.join("") + "</div>" : "";
   }
 
   function formatEducationEntry(entry) {
@@ -301,34 +526,52 @@
     return parts.length ? '<div class="education-entry">' + parts.join("") + "</div>" : "";
   }
 
+  /** Trimmed, display-ready data (repeatable rows omit empty cards). */
   function getValues() {
+    const experience = collectExperienceFromDOM().filter(experienceHasContent);
     const education = collectEducationFromDOM().filter(educationHasContent);
     const languages = collectLanguagesFromDOM().filter(languageHasContent);
 
     return {
-      name: fields.name.value.trim(),
-      title: fields.title.value.trim(),
-      contact: fields.contact.value.trim(),
-      summary: fields.summary.value.trim(),
-      experience: fields.experience.value.trim(),
+      name: (fields.name?.value ?? "").trim(),
+      title: (fields.title?.value ?? "").trim(),
+      contact: (fields.contact?.value ?? "").trim(),
+      summary: (fields.summary?.value ?? "").trim(),
+      experience: experience,
       education: education,
-      skills: parseSkills(fields.skills.value),
+      skills: parseSkills(fields.skills?.value ?? ""),
       languages: languages,
     };
   }
 
+  /** Exact form state for persistence (includes blank repeatable cards). */
   function getRawValues() {
     return {
-      name: fields.name.value,
-      title: fields.title.value,
-      contact: fields.contact.value,
-      summary: fields.summary.value,
-      experience: fields.experience.value,
+      name: fields.name?.value ?? "",
+      title: fields.title?.value ?? "",
+      contact: fields.contact?.value ?? "",
+      summary: fields.summary?.value ?? "",
+      experience: collectExperienceFromDOM(),
       education: collectEducationFromDOM(),
-      skills: fields.skills.value,
+      skills: fields.skills?.value ?? "",
       languages: collectLanguagesFromDOM(),
       fontFamily: getFontKey(),
     };
+  }
+
+  function renderExperiencePreview(experience) {
+    if (!preview.experience) {
+      return;
+    }
+    if (!experience.length) {
+      preview.experience.innerHTML =
+        '<p class="resume-body is-placeholder">' +
+        escapeHtml(PLACEHOLDERS.experience) +
+        "</p>";
+      return;
+    }
+
+    preview.experience.innerHTML = experience.map(formatExperienceEntry).join("");
   }
 
   function renderEducationPreview(education) {
@@ -390,6 +633,10 @@
   function updateResume() {
     const data = getValues();
 
+    if (!preview.name || !preview.title || !preview.contact || !preview.summary) {
+      return;
+    }
+
     preview.name.textContent = displayText(data.name, PLACEHOLDERS.name);
     preview.title.textContent = displayText(data.title, PLACEHOLDERS.title);
     preview.contact.textContent = displayText(data.contact, PLACEHOLDERS.contact);
@@ -398,10 +645,7 @@
     preview.summary.textContent = summaryText;
     preview.summary.classList.toggle("is-placeholder", !data.summary);
 
-    const expText = displayText(data.experience, PLACEHOLDERS.experience);
-    preview.experience.textContent = expText;
-    preview.experience.classList.toggle("is-placeholder", !data.experience);
-
+    renderExperiencePreview(data.experience);
     renderEducationPreview(data.education);
     renderSkillsPreview(data.skills);
     renderLanguagesPreview(data.languages);
@@ -432,15 +676,22 @@
       fields.title.value = data.title ?? "";
       fields.contact.value = data.contact ?? "";
       fields.summary.value = data.summary ?? "";
-      fields.experience.value = data.experience ?? "";
-      fields.skills.value = data.skills ?? "";
+      fields.skills.value =
+        typeof data.skills === "string" ? data.skills : "";
 
-      const education = Array.isArray(data.education) ? data.education : [];
-      const languages = Array.isArray(data.languages) ? data.languages : [];
+      const experience = parseStoredExperience(data.experience);
+      const education = Array.isArray(data.education)
+        ? data.education.map(normalizeEducation)
+        : [];
+      const languages = Array.isArray(data.languages)
+        ? data.languages.map(normalizeLanguage)
+        : [];
+      renderExperienceList(experience.length ? experience : [EMPTY_EXPERIENCE]);
       renderEducationList(education.length ? education : [EMPTY_EDUCATION]);
       renderLanguagesList(languages.length ? languages : [EMPTY_LANGUAGE]);
 
       applyFont(data.fontFamily ?? DEFAULT_FONT);
+      updateResume();
       return true;
     } catch (err) {
       console.warn("Could not load draft:", err);
@@ -452,6 +703,7 @@
     localStorage.removeItem(STORAGE_KEY);
   }
 
+  /** Central sync: every form `input` event (bubbled from dynamic cards) runs this. */
   function handleInput() {
     saveToLocalStorage();
     updateResume();
@@ -462,8 +714,8 @@
     fields.title.value = "";
     fields.contact.value = "";
     fields.summary.value = "";
-    fields.experience.value = "";
     fields.skills.value = "";
+    renderExperienceList([EMPTY_EXPERIENCE]);
     renderEducationList([EMPTY_EDUCATION]);
     renderLanguagesList([EMPTY_LANGUAGE]);
     applyFont(DEFAULT_FONT);
@@ -476,7 +728,36 @@
     saveToLocalStorage();
   }
 
+  function handleExperienceListClick(event) {
+    if (!experienceListEl) {
+      return;
+    }
+    const removeBtn = event.target.closest('[data-action="remove-experience"]');
+    if (!removeBtn) {
+      return;
+    }
+    const cards = experienceListEl.querySelectorAll(".repeatable-card");
+    if (cards.length <= 1) {
+      renderExperienceList([EMPTY_EXPERIENCE]);
+    } else {
+      removeBtn.closest(".repeatable-card")?.remove();
+      Array.from(experienceListEl.querySelectorAll(".repeatable-card")).forEach(
+        function (card, index) {
+          card.dataset.index = String(index);
+          const legend = card.querySelector(".repeatable-card__legend");
+          if (legend) {
+            legend.textContent = "Role " + (index + 1);
+          }
+        }
+      );
+    }
+    handleInput();
+  }
+
   function handleEducationListClick(event) {
+    if (!educationListEl) {
+      return;
+    }
     const removeBtn = event.target.closest('[data-action="remove-education"]');
     if (!removeBtn) {
       return;
@@ -500,6 +781,9 @@
   }
 
   function handleLanguagesListClick(event) {
+    if (!languagesListEl) {
+      return;
+    }
     const removeBtn = event.target.closest('[data-action="remove-language"]');
     if (!removeBtn) {
       return;
@@ -572,7 +856,6 @@
     const title = displayText(data.title, PLACEHOLDERS.title);
     const contact = displayText(data.contact, PLACEHOLDERS.contact);
     const summary = data.summary;
-    const experience = displayText(data.experience, PLACEHOLDERS.experience);
     const pdfFont = FONT_OPTIONS[getFontKey()].pdf;
 
     doc.setFont(pdfFont, "bold");
@@ -612,20 +895,48 @@
     doc.line(marginX, y + 2, pageWidth - marginX, y + 2);
     y += 12;
 
-    y = pdfAddSectionTitle(doc, "EXPERIENCE", marginX, y, pdfFont);
-    y = pdfAddWrappedText(
-      doc,
-      experience,
-      marginX,
-      y,
-      contentWidth,
-      lineHeight,
-      marginTop,
-      marginBottom,
-      pageHeight,
-      pdfFont
-    );
-    y += 6;
+    if (data.experience.length) {
+      y = pdfAddSectionTitle(doc, "EXPERIENCE", marginX, y, pdfFont);
+      data.experience.forEach(function (entry) {
+        const job = normalizeExperience(entry);
+        const headline = [job.role, job.company].filter(Boolean).join(" — ");
+        const dates = formatExperienceDates(job);
+
+        if (headline) {
+          doc.setFont(pdfFont, "bold");
+          doc.setFontSize(10);
+          doc.setTextColor(26, 29, 35);
+          y = pdfEnsureSpace(doc, y, lineHeight, marginTop, marginBottom, pageHeight);
+          doc.text(headline, marginX, y);
+          y += lineHeight;
+        }
+        if (dates) {
+          doc.setFont(pdfFont, "normal");
+          doc.setFontSize(9);
+          doc.setTextColor(92, 99, 112);
+          y = pdfEnsureSpace(doc, y, lineHeight, marginTop, marginBottom, pageHeight);
+          doc.text(dates, marginX, y);
+          y += lineHeight;
+          doc.setTextColor(26, 29, 35);
+        }
+        if (job.description) {
+          y = pdfAddWrappedText(
+            doc,
+            job.description,
+            marginX,
+            y,
+            contentWidth,
+            lineHeight,
+            marginTop,
+            marginBottom,
+            pageHeight,
+            pdfFont
+          );
+        }
+        y += 2;
+      });
+      y += 4;
+    }
 
     if (data.education.length) {
       y = pdfAddSectionTitle(doc, "EDUCATION", marginX, y, pdfFont);
@@ -673,11 +984,20 @@
 
     if (data.skills.length) {
       y = pdfAddSectionTitle(doc, "SKILLS", marginX, y, pdfFont);
-      doc.setFont(pdfFont, "normal");
-      doc.setFontSize(10);
-      y = pdfEnsureSpace(doc, y, lineHeight, marginTop, marginBottom, pageHeight);
-      doc.text(data.skills.join("  ·  "), marginX, y);
-      y += lineHeight + 4;
+
+      y = pdfAddWrappedText(
+        doc,
+        data.skills.join("  ·  "),
+        marginX,
+        y,
+        contentWidth,
+        lineHeight,
+        marginTop,
+        marginBottom,
+        pageHeight,
+        pdfFont
+      );
+      y += 4;
     }
 
     if (data.languages.length) {
@@ -716,38 +1036,83 @@
     doc.save(sanitizeFilename(data.name));
   }
 
-  form.addEventListener("input", handleInput);
-  fontSelect.addEventListener("change", handleFontChange);
-  downloadBtn.addEventListener("click", downloadPdf);
-  clearBtn.addEventListener("click", clearForm);
-  addEducationBtn.addEventListener("click", function () {
-    const entries = collectEducationFromDOM();
-    entries.push(EMPTY_EDUCATION);
-    renderEducationList(entries);
-    handleInput();
-  });
-  addLanguageBtn.addEventListener("click", function () {
-    const entries = collectLanguagesFromDOM();
-    entries.push(EMPTY_LANGUAGE);
-    renderLanguagesList(entries);
-    handleInput();
-  });
-  educationListEl.addEventListener("click", handleEducationListClick);
-  languagesListEl.addEventListener("click", handleLanguagesListClick);
+  // --- Init: validate DOM, bind events, restore draft or empty repeatable rows ---
+  assertDom();
+
+  if (form) {
+    form.addEventListener("input", handleInput);
+  }
+  if (fontSelect) {
+    fontSelect.addEventListener("change", handleFontChange);
+  }
+  if (downloadBtn) {
+    downloadBtn.addEventListener("click", downloadPdf);
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener("click", clearForm);
+  }
+  if (addExperienceBtn) {
+    addExperienceBtn.addEventListener("click", function () {
+      const entries = collectExperienceFromDOM();
+      entries.push({ ...EMPTY_EXPERIENCE });
+      renderExperienceList(entries);
+      handleInput();
+    });
+  }
+  if (experienceListEl) {
+    experienceListEl.addEventListener("click", handleExperienceListClick);
+  }
+  if (addEducationBtn) {
+    addEducationBtn.addEventListener("click", function () {
+      const entries = collectEducationFromDOM();
+      entries.push({ ...EMPTY_EDUCATION });
+      renderEducationList(entries);
+      handleInput();
+    });
+  }
+  if (addLanguageBtn) {
+    addLanguageBtn.addEventListener("click", function () {
+      const entries = collectLanguagesFromDOM();
+      entries.push({ ...EMPTY_LANGUAGE });
+      renderLanguagesList(entries);
+      handleInput();
+    });
+  }
+  if (educationListEl) {
+    educationListEl.addEventListener("click", handleEducationListClick);
+  }
+  if (languagesListEl) {
+    languagesListEl.addEventListener("click", handleLanguagesListClick);
+  }
 
   if (typeof ResizeObserver !== "undefined") {
     const overflowObserver = new ResizeObserver(scheduleOverflowCheck);
-    overflowObserver.observe(resumePreview);
-    overflowObserver.observe(resumePreviewContent);
+    if (a4ScaleViewport) {
+      overflowObserver.observe(a4ScaleViewport);
+    }
+    if (previewStage) {
+      overflowObserver.observe(previewStage);
+    }
+    if (resumePreview) {
+      overflowObserver.observe(resumePreview);
+    }
+    if (resumePreviewContent) {
+      overflowObserver.observe(resumePreviewContent);
+    }
+    if (experienceListEl) {
+      overflowObserver.observe(experienceListEl);
+    }
   }
 
   window.addEventListener("resize", scheduleOverflowCheck);
 
   applyFont(DEFAULT_FONT);
   if (!loadFromLocalStorage()) {
+    renderExperienceList([EMPTY_EXPERIENCE]);
     renderEducationList([EMPTY_EDUCATION]);
     renderLanguagesList([EMPTY_LANGUAGE]);
   }
+  updatePreviewScale();
   updateResume();
   scheduleOverflowCheck();
 })();
