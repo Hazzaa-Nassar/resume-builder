@@ -39,6 +39,7 @@
     experience: "Your work experience will appear here.",
     education: "Your education will appear here.",
     skills: "Add skills in the form",
+    hobbies: "Add hobbies in the form",
     languages: "Add languages in the form",
   };
 
@@ -70,6 +71,7 @@
     contact: document.getElementById("contact"),
     summary: document.getElementById("summary"),
     skills: document.getElementById("skills"),
+    hobbies: document.getElementById("hobbies"),
   };
 
   const preview = {
@@ -80,6 +82,7 @@
     experience: document.getElementById("preview-experience"),
     education: document.getElementById("preview-education"),
     skills: document.getElementById("preview-skills"),
+    hobbies: document.getElementById("preview-hobbies"),
     languages: document.getElementById("preview-languages"),
   };
 
@@ -540,6 +543,7 @@
       experience: experience,
       education: education,
       skills: parseSkills(fields.skills?.value ?? ""),
+      hobbies: parseSkills(fields.hobbies?.value ?? ""),
       languages: languages,
     };
   }
@@ -554,6 +558,7 @@
       experience: collectExperienceFromDOM(),
       education: collectEducationFromDOM(),
       skills: fields.skills?.value ?? "",
+      hobbies: fields.hobbies?.value ?? "",
       languages: collectLanguagesFromDOM(),
       fontFamily: getFontKey(),
     };
@@ -604,6 +609,24 @@
     });
   }
 
+  function renderHobbiesPreview(hobbies) {
+    preview.hobbies.replaceChildren();
+    if (!hobbies.length) {
+      const li = document.createElement("li");
+      li.className = "skill-badges__placeholder";
+      li.textContent = PLACEHOLDERS.hobbies;
+      preview.hobbies.appendChild(li);
+      return;
+    }
+
+    hobbies.forEach(function (hobby) {
+      const li = document.createElement("li");
+      li.className = "skill-badge";
+      li.textContent = hobby;
+      preview.hobbies.appendChild(li);
+    });
+  }
+
   function renderLanguagesPreview(languages) {
     preview.languages.replaceChildren();
     if (!languages.length) {
@@ -648,6 +671,7 @@
     renderExperiencePreview(data.experience);
     renderEducationPreview(data.education);
     renderSkillsPreview(data.skills);
+    renderHobbiesPreview(data.hobbies);
     renderLanguagesPreview(data.languages);
     scheduleOverflowCheck();
   }
@@ -678,6 +702,8 @@
       fields.summary.value = data.summary ?? "";
       fields.skills.value =
         typeof data.skills === "string" ? data.skills : "";
+      fields.hobbies.value =
+        typeof data.hobbies === "string" ? data.hobbies : "";
 
       const experience = parseStoredExperience(data.experience);
       const education = Array.isArray(data.education)
@@ -715,6 +741,7 @@
     fields.contact.value = "";
     fields.summary.value = "";
     fields.skills.value = "";
+    fields.hobbies.value = "";
     renderExperienceList([EMPTY_EXPERIENCE]);
     renderEducationList([EMPTY_EDUCATION]);
     renderLanguagesList([EMPTY_LANGUAGE]);
@@ -988,6 +1015,24 @@
       y = pdfAddWrappedText(
         doc,
         data.skills.join("  ·  "),
+        marginX,
+        y,
+        contentWidth,
+        lineHeight,
+        marginTop,
+        marginBottom,
+        pageHeight,
+        pdfFont
+      );
+      y += 4;
+    }
+
+    if (data.hobbies.length) {
+      y = pdfAddSectionTitle(doc, "HOBBIES & INTERESTS", marginX, y, pdfFont);
+
+      y = pdfAddWrappedText(
+        doc,
+        data.hobbies.join("  ·  "),
         marginX,
         y,
         contentWidth,
