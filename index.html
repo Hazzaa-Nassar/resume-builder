@@ -29,9 +29,36 @@
           <input type="text" id="contact" name="contact" placeholder="jane@email.com · +1 555 0100" spellcheck="false">
         </div>
         <div class="field">
-          <label for="experience">Work experience</label>
-          <textarea id="experience" name="experience" rows="10" placeholder="Company — Role (2020–Present)&#10;• Key achievement or responsibility&#10;&#10;Previous Company — Role (2016–2020)&#10;• Another highlight"></textarea>
+          <label for="summary">Professional summary</label>
+          <textarea id="summary" name="summary" class="textarea-summary" rows="4" placeholder="Write 3–4 sentences that capture your strongest achievements, expertise, and career direction. Keep it concise, confident, and tailored to the role you want."></textarea>
         </div>
+        <div class="field">
+          <label for="experience">Work experience</label>
+          <textarea id="experience" name="experience" rows="8" placeholder="Company — Role (2020–Present)&#10;• Key achievement or responsibility&#10;&#10;Previous Company — Role (2016–2020)&#10;• Another highlight"></textarea>
+        </div>
+
+        <div class="field-group" id="education-group">
+          <div class="field-group__header">
+            <h3 class="field-group__title">Education</h3>
+            <button type="button" id="add-education" class="btn btn-ghost btn-sm">+ Add school</button>
+          </div>
+          <div id="education-list" class="repeatable-list" aria-live="polite"></div>
+        </div>
+
+        <div class="field">
+          <label for="skills">Skills</label>
+          <input type="text" id="skills" name="skills" placeholder="JavaScript, Project Management, UI/UX, Figma" spellcheck="false">
+          <p class="field-hint">Separate skills with commas — they appear as badges in the preview.</p>
+        </div>
+
+        <div class="field-group" id="languages-group">
+          <div class="field-group__header">
+            <h3 class="field-group__title">Languages</h3>
+            <button type="button" id="add-language" class="btn btn-ghost btn-sm">+ Add language</button>
+          </div>
+          <div id="languages-list" class="repeatable-list" aria-live="polite"></div>
+        </div>
+
         <div class="form-actions">
           <button type="button" id="download-pdf" class="btn btn-primary">
             Download PDF
@@ -44,17 +71,54 @@
     </section>
 
     <section class="panel panel-preview" aria-label="Resume preview">
-      <h2 class="preview-label">Preview</h2>
-      <article id="resume-preview" class="resume-preview" aria-live="polite">
-        <header class="resume-header">
-          <h3 id="preview-name" class="resume-name">Your Name</h3>
-          <p id="preview-title" class="resume-title">Professional Title</p>
-          <p id="preview-contact" class="resume-contact">email@example.com</p>
-        </header>
-        <section class="resume-section">
-          <h4>Experience</h4>
-          <div id="preview-experience" class="resume-body">Your work experience will appear here.</div>
-        </section>
+      <div class="preview-toolbar">
+        <h2 class="preview-label">Preview</h2>
+        <div class="font-customizer">
+          <label for="resume-font">Font style</label>
+          <select id="resume-font" class="font-select" aria-label="Resume font family">
+            <option value="sans">Modern Sans-Serif</option>
+            <option value="serif">Classic Serif</option>
+            <option value="mono">Minimalist Monospace</option>
+          </select>
+        </div>
+      </div>
+      <p id="page-overflow-warning" class="page-overflow-warning" role="status" hidden>
+        Content exceeds one A4 page — trim text before exporting.
+      </p>
+      <article id="resume-preview" class="resume-preview a4-page" aria-live="polite">
+        <div id="resume-preview-content" class="resume-preview__content">
+          <header class="resume-header">
+            <h3 id="preview-name" class="resume-name">Your Name</h3>
+            <p id="preview-title" class="resume-title">Professional Title</p>
+            <p id="preview-contact" class="resume-contact">email@example.com</p>
+          </header>
+          <p id="preview-summary" class="resume-summary resume-body is-placeholder">Your professional summary will appear here.</p>
+          <section class="resume-section" data-section="experience">
+            <h4>Experience</h4>
+            <div id="preview-experience" class="resume-body">Your work experience will appear here.</div>
+          </section>
+          <section class="resume-section" data-section="education" id="preview-education-section">
+            <h4>Education</h4>
+            <div id="preview-education" class="resume-education-list">
+              <p class="resume-body is-placeholder">Your education will appear here.</p>
+            </div>
+          </section>
+          <div class="resume-meta-row">
+            <section class="resume-section resume-section--compact" data-section="skills">
+              <h4>Skills</h4>
+              <ul id="preview-skills" class="skill-badges" aria-label="Skills">
+                <li class="skill-badges__placeholder">Add skills in the form</li>
+              </ul>
+            </section>
+            <section class="resume-section resume-section--compact" data-section="languages">
+              <h4>Languages</h4>
+              <ul id="preview-languages" class="language-list" aria-label="Languages">
+                <li class="language-list__placeholder">Add languages in the form</li>
+              </ul>
+            </section>
+          </div>
+        </div>
+        <div class="a4-cutoff-line" aria-hidden="true"></div>
       </article>
     </section>
   </main>
